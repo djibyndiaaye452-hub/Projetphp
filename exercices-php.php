@@ -233,46 +233,104 @@ final class Task
         private bool $done = false,
         private readonly string $createdAt = ''
     ) {
-        // TODO
-        
-        
+    
+        $id = (int)$id;
+        if ($id <= 0) {
+            throw new InvalidArgumentException("L'identifiant de la tâche doit être un entier positif");
+        }
+        $this->title = trim($title);
+        if ($this->title === '') {
+            throw new InvalidArgumentException("Le titre de la tâche ne peut pas être vide");   
+        }
+        $this->done = $done;
+        $this->createdAt = $createdAt === '' ? date('Y-m-d H:i:s') : $createdAt; 
+         
+     }
+    public function getId():int
+    {
+        return $this->id ;
+    }
+    public function getTitle(): string
+    {
+        return $this->title ;
+    }
+    public function getDone(): bool
+    {
+
+        return $this->done ;
+    }
+    public function getCreatedAt(): string
+    {
+        return $this->createdAt ;
+    }
+    public function setTitle( string $title): void
+    {
+        $this->title = $title;         
+    }
+    public function setDone( bool $done): void
+    {
+        $this->done = $done;         
+    }
+    public function setCreatedAt( string $createdAt): void
+    {
+        $this->createdAt = $createdAt;         
+    }
+    public function __toString(): string
+    {
+        $status = $this->done ? '[x]' : '[ ]';
+        return sprintf("%s #%d - %s (Créer le %s)", $status, $this->id, $this->title, $this->createdAt);
     }
 
+       
     public function markDone(): void
     {
         // TODO
-
+        $this->setDone(true);
     }
 
     public function toArray(): array
     {
         // TODO
-    }
+        return[
+            'id' => $this->id,
+            'title' => $this->title,
+            'done' => $this->done,
+            'created_at' => $this->createdAt,
+        ] ;  
+     }
 
     public static function fromArray(array $data): self
     {
         // TODO
+        return new self(
+            id: (int)$data['id'],
+            title: (string)$data['title'],
+            done: (bool)$data['done'],
+            createdAt: (string)$data['created_at']
+        );
     }
 }
 
 final class TaskCollection
 {
     /** @var Task[] */
-    private array $tasks = [];
-
+    private array $tasks = [];  
     public function add(Task $task): void
     {
         // TODO
+        $this->tasks[] = $task;
     }
 
     public function remove(int $id): void
     {
         // TODO
+        $this->tasks = array_filter($this->tasks, fn(Task $task) => $task->getId() !== $id);
     }
 
     public function filter(callable $predicate): array
     {
         // TODO: array_filter sur $this->tasks
+        return array_filter($this->tasks, $predicate);
     }
 }
 
@@ -296,6 +354,7 @@ final class CartItem
     public function subtotal(): float
     {
         // TODO
+        return $this->product->price * $this->quantity;
     }
 }
 
@@ -311,6 +370,7 @@ final class PercentageDiscount implements DiscountStrategy
     public function apply(float $total): float
     {
         // TODO
+        return $total - ($total * $this->percent / 100);
     }
 }
 
@@ -324,11 +384,17 @@ final class Cart
     public function addItem(Product $product, int $quantity): void
     {
         // TODO
+        $this->items[] = new CartItem($product, $quantity);
     }
 
     public function total(): float
     {
         // TODO: somme des subtotal(), appliquer $this->discount si présent
+        $total = array_reduce($this->items, fn($carry, CartItem $item) => $carry + $item->subtotal(), 0);
+        if ($this->discount !== null) {
+            $total = $this->discount->apply($total);
+        }
+        return $total;
     }
 }
 
