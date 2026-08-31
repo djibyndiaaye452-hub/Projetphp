@@ -162,6 +162,7 @@ function validate(array $data, array $rules): array
 {
     // TODO: retourner un tableau d'erreurs
     // rules ex: ['email' => 'email', 'password' => 'min:8', 'age' => 'int|min:18']
+    
     $errors = [];
     foreach($rules as $field => $ruleString){
         $value = $data[$field]  ?? null;
