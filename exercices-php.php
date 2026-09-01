@@ -409,22 +409,41 @@ abstract class Shape
 final class Circle extends Shape
 {
     public function __construct(private float $radius) {}
-    public function area(): float { /* TODO */ }
-    public function perimeter(): float { /* TODO */ }
+    public function area(): float { 
+        /* TODO */
+        return pi() * $this->radius ** 2;
+    }
+    public function perimeter(): float {
+         /* TODO */
+        return 2 * pi() * $this->radius;
+    }
 }
 
 final class Rectangle extends Shape
 {
     public function __construct(private float $width, private float $height) {}
-    public function area(): float { /* TODO */ }
-    public function perimeter(): float { /* TODO */ }
+    public function area(): float { 
+        /* TODO */ 
+    
+    return $this->width * $this->height;
+    }
+    public function perimeter(): float {
+         /* TODO */
+         return 2 * ($this->width + $this->height);
+    }
 }
 
 final class Triangle extends Shape
 {
     public function __construct(private float $base, private float $height, private float $a, private float $b, private float $c) {}
-    public function area(): float { /* TODO: base * hauteur / 2 */ }
-    public function perimeter(): float { /* TODO: a+b+c */ }
+    public function area(): float { 
+        /* TODO: base * hauteur / 2 */
+        return $this->base * $this->height / 2;
+    }
+    public function perimeter(): float { 
+        /* TODO: a+b+c */
+        return $this->a + $this->b + $this->c;
+    }
 }
 
 
@@ -565,6 +584,7 @@ final class TaskManager
     public function addTask(string $title): Task
     {
         // TODO: valider $title, créer Task, save()
+
     }
 
     public function completeTask(int $id): void
