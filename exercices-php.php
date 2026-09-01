@@ -474,30 +474,45 @@ final class UserRepository
             )
         ");
     }
-
+    
     public function create(string $name, string $email): int
     {
         // TODO: requête préparée INSERT, retourner lastInsertId
+        $stmt = $this->pdo->prepare("INSERT INTO users (name, email, created_at) VALUES (?, ?, ?)");
+        $stmt->execute([$name,$email,date('Y-m-d H:i:s')]);
+        return (int)$this->pdo->lastInsertId();
     }
 
     public function find(int $id): ?array
     {
         // TODO: SELECT préparé, fetch
+        $stmt = $this->pdo->prepare("SELECT * FROM users WHERE id = ?");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $user ?: null;
     }
 
     public function update(int $id, string $name, string $email): void
     {
         // TODO: UPDATE préparé
+        $stmt = $this->pdo->prepare("UPDATE users SET name = ?, email = ? WHERE id = ?");
+        $stmt->execute([$name, $email, $id]);   
+
     }
 
     public function delete(int $id): void
     {
         // TODO: DELETE préparé
+        $stmt = $this->pdo->prepare("DELETE FROM users WHERE id = ?");
+        $stmt->execute([$id]);  
     }
 
     public function all(): array
     {
         // TODO: SELECT *
+        $stmt = $this->pdo->prepare("SELECT * FROM users");
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
 
@@ -520,21 +535,44 @@ final class JsonTaskRepository implements TaskRepositoryInterface
     public function save(Task $task): void
     {
         // TODO: charger toutes les tasks, remplacer/ajouter, réécrire le JSON
+        $tasks = $this->findAll();
+        $existingTask = array_filter($tasks, fn($t) => $t->id === $task->id);
+        if ($existingTask) {
+            $tasks = array_map(fn($t) => $t->id === $task->id ? $task : $t, $tasks);
+        } else {
+            $tasks[] = $task;
+        }
+        file_put_contents($this->file, json_encode($tasks ));
     }
 
     public function findAll(): array
     {
         // TODO
+        if (!file_exists($this->file)) {
+            return [];
+        }
+        $data = json_decode(file_get_contents($this->file), true);
+        return array_map(fn($item) => Task::fromArray($item), $data);
     }
 
     public function find(int $id): ?Task
     {
         // TODO
+        $tasks = $this->findAll();
+        foreach ($tasks as $task) {
+            if ($task->getId() === $id) {
+                return $task;
+            }
+        }
+        return null;
     }
 
     public function delete(int $id): void
     {
         // TODO
+        $tasks = $this->findAll();
+        $tasks = array_filter($tasks, fn($task) => $task->getId() !== $id);
+        file_put_contents($this->file, json_encode($tasks));    
     }
 }
 
@@ -559,21 +597,45 @@ final class SqliteTaskRepository implements TaskRepositoryInterface
     public function save(Task $task): void
     {
         // TODO: INSERT ... ON CONFLICT(id) DO UPDATE (ou logique insert/update séparée)
+        $stmt = $this->pdo->prepare("
+            INSERT INTO tasks (id, title, done, created_at) VALUES (:id, :title, :done, :created_at)
+            ON CONFLICT(id) DO UPDATE SET title = :title, done = :done
+        ");
+        $stmt->execute([
+            ':id' => $task->getId(),
+            ':title' => $task->getTitle(),
+            ':done' => $task->getDone() ? 1 : 0,
+            ':created_at' => $task->getCreatedAt(),
+        ]); 
     }
 
     public function findAll(): array
     {
         // TODO: SELECT * puis Task::fromArray sur chaque ligne
+        $stmt = $this->pdo->query("SELECT * FROM tasks");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return array_map(fn($row) => Task::fromArray($row), $rows); 
     }
 
     public function find(int $id): ?Task
     {
         // TODO: throw TaskNotFoundException si absent, ou retourner null selon convention choisie
+        $stmt = $this->pdo->prepare("SELECT * FROM tasks WHERE id = ?");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+
+             throw new TaskNotFoundException("La tâche avec l'id $id n'a pas été trouvée");
+            
+        }
+        return Task::fromArray($row);
     }
 
     public function delete(int $id): void
     {
         // TODO
+        $stmt = $this->pdo->prepare("DELETE FROM tasks WHERE id = ?");
+        $stmt->execute([$id]);  
     }
 }
 
@@ -584,22 +646,44 @@ final class TaskManager
     public function addTask(string $title): Task
     {
         // TODO: valider $title, créer Task, save()
+        $title = trim($title);
+        if ($title === '') {
+            throw new InvalidArgumentException("Le titre de la tâche ne peut pas être vide");
+        }
+        $tasks = $this->repository->findAll();
+        $newId = empty($tasks) ? 1 : max(array_map(fn(Task $task) => $task->getId(), $tasks)) + 1;
+        $task = new Task($newId, $title);
+        $this->repository->save($task);
+        return $task;
 
     }
 
     public function completeTask(int $id): void
     {
         // TODO: find(), throw TaskNotFoundException si null, markDone(), save()
+        $task = $this->repository->find($id);
+        if ($task === null) {
+            throw new TaskNotFoundException("La tâche avec l'id $id n'a pas été trouvée");  
+        }
+        $task->markDone();
+        $this->repository->save($task); 
     }
 
     public function removeTask(int $id): void
     {
         // TODO
+        $this->repository->delete($id);
+
     }
 
     public function listTasks(?bool $doneFilter = null): array
     {
         // TODO
+        $tasks = $this->repository->findAll();
+        if ($doneFilter !== null) {
+            $tasks = array_filter($tasks, fn(Task $task) => $task->getDone() === $doneFilter);
+        }
+        return $tasks;  
     }
 }
 
@@ -626,11 +710,34 @@ final class PostRepository
     public function initSchema(): void
     {
         // TODO: CREATE TABLE authors, CREATE TABLE posts avec FK author_id
+        $this->pdo->exec("CREATE TABLE IF NOT EXISTS authors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL
+        )");
+        $this->pdo->exec("CREATE TABLE IF NOT EXISTS posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            author_id INTEGER NOT NULL,
+            FOREIGN KEY (author_id) REFERENCES authors(id)
+        )");    
     }
 
     public function findByAuthor(int $authorId): array
     {
         // TODO: JOIN posts + authors, hydrater des objets Post/Author
+        $stmt = $this->pdo->prepare("
+            SELECT p.id AS post_id, p.title AS post_title, a.id AS author_id, a.name AS author_name
+            FROM posts p
+            JOIN authors a ON p.author_id = a.id
+            WHERE a.id = ?
+        ");
+        $stmt->execute([$authorId]);
+        $posts = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $author = new Author((int)$row['author_id'], $row['author_name']);
+            $posts[] = new Post((int)$row['post_id'], $row['post_title'], $author);
+        }
+        return $posts;      
     }
 }
 
