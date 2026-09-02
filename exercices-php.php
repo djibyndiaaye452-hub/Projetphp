@@ -760,33 +760,73 @@ abstract class Model
     public function save(): void
     {
         // TODO: via get_object_vars(), INSERT ou UPDATE selon présence d'un id
+        $vars = get_object_vars($this);
+        if (isset($vars['id'])) {
+            //  on verifie que l'id existe dans la table avant de faire l'update
+            $columns = array_keys($vars);
+            $setClause = implode(', ', array_map(fn($col) => "$col = ?", $columns));
+            $values = array_values($vars);
+            $stmt = static::$pdo->prepare("UPDATE " . static::$table . " SET $setClause WHERE id = ?");
+            $stmt->execute([...$values, $vars['id']]);
+        } else {
+            //  si l'id n'existe pas on le crée automatiquement
+            $columns = array_keys($vars);
+            $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+            $stmt = static::$pdo->prepare("INSERT INTO " . static::$table . " ($columns) VALUES ($placeholders)");
+            $stmt->execute(array_values($vars));
+        }
     }
 
     public static function find(int $id): ?static
     {
         // TODO: SELECT, hydrater via propriétés dynamiques ou constructeur
+        $stmt = static::$pdo->prepare("SELECT * FROM " . static::$table . " WHERE id = ?");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+            return null;
+        }
+        return new static(...array_values($row));
     }
 
     public static function where(string $column, mixed $value): array
     {
         // TODO: requête dynamique préparée
+        $stmt = static::$pdo->prepare("SELECT * FROM " . static::$table . " WHERE $column = ?");
+        $stmt->execute([$value]);
+        $results = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $results[] = new static(...array_values($row)); 
+        }
+        return $results;    
     }
-}
+}   
 
 
 // --- 4.2 API REST CRUD (sans framework) ---
-final class Router
+final  class Router
 {
     private array $routes = [];
 
     public function add(string $method, string $path, callable $handler): void
     {
         // TODO: stocker [method, path] => handler
+        $this->routes[$method][$path] = $handler;
+       
+
     }
 
     public function dispatch(string $method, string $uri): void
     {
         // TODO: matcher la route, appeler le handler, sinon 404 JSON
+        if (isset($this->routes[$method][$uri])) {
+            $handler = $this->routes[$method][$uri];
+            $handler();
+        } else {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Route not found']);
+        }
     }
 }
 
@@ -797,6 +837,10 @@ final class Router
 function jsonResponse(mixed $data, int $status = 200): void
 {
     // TODO: header('Content-Type: application/json'), http_response_code($status), echo json_encode($data)
+
+    header('Content-Type: application/json');
+    http_response_code($status);
+    echo json_encode($data);
 }
 
 
@@ -813,9 +857,23 @@ final class OrderService
         // $this->pdo->beginTransaction();
         // try { décrémenter stock, insérer commande; $this->pdo->commit(); }
         // catch (\Throwable $e) { $this->pdo->rollBack(); throw $e; }
+        $this->pdo->beginTransaction();
+        try {
+            // Décrémenter le stock du produit
+            $stmt = $this->pdo->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
+            $stmt->execute([$quantity, $productId, $quantity]);
+            if ($stmt->rowCount() === 0) {
+                throw new RuntimeException("Stock insuffisant pour le produit $productId");
+            }
+            // Insérer la commande
+            $stmt = $this->pdo->prepare("INSERT INTO orders (product_id, quantity) VALUES (?, ?)");
+            $stmt->execute([$productId, $quantity]);
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
     }
 }
-
-
 
 
